@@ -5,6 +5,8 @@ import { Button } from "@/components/ui/button"
 import { Card } from "@/components/ui/card"
 import DashboardLayout from "@/components/layout/dashboard-layout"
 import { NewProjectDialog } from "@/components/projects/new-project-dialog"
+import { StatusBadge } from "@/components/projects/status-badge"
+import { StatusFilter } from "@/components/projects/status-filter"
 import { supabase } from "@/app/auth/supabase-client"
 import Link from "next/link"
 
@@ -14,7 +16,7 @@ interface Project {
   contractor: string
   contact: string
   due_date: string
-  status: string
+  status: "pending" | "in-progress" | "completed" | "cancelled"
 }
 
 interface LineItem {
@@ -26,6 +28,7 @@ export default function ProjectsPage() {
   const [projects, setProjects] = useState<Project[]>([])
   const [projectTotals, setProjectTotals] = useState<Record<string, number>>({})
   const [loading, setLoading] = useState(true)
+  const [statusFilter, setStatusFilter] = useState<string>("all")
 
   useEffect(() => {
     fetchProjects()
@@ -34,10 +37,17 @@ export default function ProjectsPage() {
   const fetchProjects = async () => {
     try {
       // Fetch projects
-      const { data: projectsData, error: projectsError } = await supabase
+      let query = supabase
         .from("projects")
         .select("*")
         .order("created_at", { ascending: false })
+
+      // Apply status filter
+      if (statusFilter !== "all") {
+        query = query.eq("status", statusFilter)
+      }
+
+      const { data: projectsData, error: projectsError } = await query
 
       if (projectsError) throw projectsError
       setProjects(projectsData || [])
@@ -63,11 +73,30 @@ export default function ProjectsPage() {
     }
   }
 
+  const handleStatusChange = () => {
+    fetchProjects()
+  }
+
+  const handleFilterChange = (value: string) => {
+    setStatusFilter(value)
+    setLoading(true)
+    fetchProjects()
+  }
+
   return (
     <DashboardLayout>
-      <div className="mb-8 flex items-center justify-between">
-        <h1 className="text-2xl font-bold">Projects</h1>
-        <NewProjectDialog />
+      <div className="mb-8 space-y-4">
+        <div className="flex items-center justify-between">
+          <h1 className="text-2xl font-bold">Projects</h1>
+          <NewProjectDialog />
+        </div>
+
+        <div className="flex items-center justify-between">
+          <StatusFilter value={statusFilter} onChange={handleFilterChange} />
+          <div className="text-sm text-gray-500">
+            {projects.length} project{projects.length === 1 ? "" : "s"} found
+          </div>
+        </div>
       </div>
 
       <Card>
@@ -108,7 +137,9 @@ export default function ProjectsPage() {
               ) : projects.length === 0 ? (
                 <tr>
                   <td colSpan={7} className="px-4 py-3 text-center">
-                    No projects found. Create your first project!
+                    {statusFilter === "all"
+                      ? "No projects found. Create your first project!"
+                      : "No projects found with the selected status."}
                   </td>
                 </tr>
               ) : (
@@ -138,9 +169,11 @@ export default function ProjectsPage() {
                       })}
                     </td>
                     <td className="whitespace-nowrap px-4 py-3">
-                      <span className="inline-flex items-center rounded-full bg-yellow-50 px-2 py-1 text-xs font-medium text-yellow-800">
-                        {project.status}
-                      </span>
+                      <StatusBadge
+                        projectId={project.id}
+                        initialStatus={project.status}
+                        onStatusChange={handleStatusChange}
+                      />
                     </td>
                     <td className="whitespace-nowrap px-4 py-3">
                       <Link href={`/projects/${project.id}`}>
